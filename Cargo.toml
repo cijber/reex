@@ -1,0 +1,2 @@
+[workspace]
+members = [ "reex-vm", "reex-ast" ]

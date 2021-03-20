@@ -1,0 +1,52 @@
+# (?<=\b(\w|\s*\.\s*)+)\b\([^)]*\)
+# look behind: (\w|\s*\.\s*)+\b
+  checkpoint 1
+  reverse
+LOOK_BEHIND_1:
+  split WORD, DOTTED
+WORD:
+  itemclass Word
+  split LOOK_BEHIND_1, LOOK_BEHIND_3
+DOTTED:
+  split DOTTED_WHITESPACE, DOTTED_DOT
+DOTTED_WHITESPACE:
+  itemclass Whitespace
+  split DOTTED_WHITESPACE, DOTTED_DOT
+DOTTED_DOT:
+  item '.'
+  jmp DOTTED_DOT_DOTTED
+DOTTED_DOT_WHITESPACE:
+  itemclass Whitespace
+DOTTED_DOT_DOTTED:
+  split DOTTED_DOT_WHITESPACE, LOOK_BEHIND_2
+LOOK_BEHIND_2:
+  split LOOK_BEHIND_1, LOOK_BEHIND_3
+LOOK_BEHIND_3:
+  split BOUNDARY, BOUNDARY_2
+BOUNDARY:
+  peek Not(Box::new(Word))
+  peekbehind Word
+  jmp BOUNDARY_3
+BOUNDARY_2:
+  peek Word
+  peekbehind Not(Box::new(Word))
+BOUNDARY_3:
+  rewind 1
+  forwards
+  split 2_BOUNDARY, 2_BOUNDARY_2
+2_BOUNDARY:
+  peek Not(Box::new(Word))
+  peekbehind Word
+  jmp 2_BOUNDARY_3
+2_BOUNDARY_2:
+  peek Word
+  peekbehind Not(Box::new(Word))
+2_BOUNDARY_3:
+  char '('
+  split ARGS, AFTER_ARGS
+ARGS:
+  itemclass Not(Box::new(Exact(')')))
+  split ARGS, AFTER_ARGS
+AFTER_ARGS:
+  char ')'
+  match
