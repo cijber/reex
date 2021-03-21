@@ -6,7 +6,7 @@ pub trait Matcher<T: Debug>: Debug + Display {
 }
 
 #[derive(Debug)]
-pub struct Exact<T: Eq + Debug>(pub(crate) T);
+pub struct Exact<T: Eq + Debug>(pub T);
 
 impl<T: Eq + Debug> Display for Exact<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -104,7 +104,7 @@ impl Matcher<u8> for Word {
 }
 
 #[derive(Debug)]
-pub struct Not<T: Debug>(pub(crate) Box<dyn Matcher<T>>);
+pub struct Not<T: Debug>(pub Box<dyn Matcher<T>>);
 
 impl<T: Debug> Matcher<T> for Not<T> {
     fn matches(&self, item: &T) -> bool {

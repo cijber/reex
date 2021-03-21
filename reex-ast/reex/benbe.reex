@@ -1,0 +1,1 @@
+:lookbehind[ :boundary [ :word | :whitespace* "." :whitespace* ]+ ] :boundary "(" :not[ ")" ]* ")"

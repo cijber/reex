@@ -1,0 +1,32 @@
+reex = { group_body ~ EOI }
+
+ident = @{ (NUMBER | ALPHABETIC | OTHER_SYMBOL)+  }
+
+element_list = { element* }
+element = { item ~ quantifier? ~ quantifier_glue? }
+
+quantifier_glue = { quantifier_glue_sigill ~ item }
+quantifier_glue_sigill = { "%%" | "%" }
+
+quantifier = { ("?" | "*" | "+" | quantifier_range) }
+quantifier_range = { "{" ~ quantifier_min ~ ".." ~ quantifier_max ~ "}" }
+quantifier_min = @{ NUMBER* }
+quantifier_max = @{ NUMBER* }
+item = { block | flag | quoted_string | ident | group | symbol }
+
+symbol = { "." | "^" | "$" }
+
+group = !{ "[" ~ group_body  ~ "]" }
+group_body = _{ (element_list ~ ("|" ~ element_list)*)? }
+
+ident_extra = { ident ~ ("<" ~ ( (ident_arg ~ ",")* ~ ident_arg )? ~ ">")? }
+ident_arg = @{ quoted_string | ident }
+
+block = ${ ":" ~ ident_extra ~ group }
+flag = ${ ":" ~ ident_extra ~ !"[" }
+
+quoted_string = ${ PUSH(VALID_QUOTE) ~ inner_quoted_string ~ POP }
+inner_quoted_string = @{ ("\\" ~ PEEK | !PEEK ~ ANY)* }
+
+VALID_QUOTE = _{ "'" | "\"" }
+WHITESPACE = _{ WHITE_SPACE | NEWLINE }

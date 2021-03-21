@@ -22,26 +22,10 @@ DOTTED_DOT_DOTTED:
 LOOK_BEHIND_2:
   split LOOK_BEHIND_1, LOOK_BEHIND_3
 LOOK_BEHIND_3:
-  split BOUNDARY, BOUNDARY_2
-BOUNDARY:
-  peek Not(Box::new(Word))
-  peekbehind Word
-  jmp BOUNDARY_3
-BOUNDARY_2:
-  peek Word
-  peekbehind Not(Box::new(Word))
-BOUNDARY_3:
+  boundary Word
   rewind 1
   forwards
-  split 2_BOUNDARY, 2_BOUNDARY_2
-2_BOUNDARY:
-  peek Not(Box::new(Word))
-  peekbehind Word
-  jmp 2_BOUNDARY_3
-2_BOUNDARY_2:
-  peek Word
-  peekbehind Not(Box::new(Word))
-2_BOUNDARY_3:
+  boundary Word
   char '('
   split ARGS, AFTER_ARGS
 ARGS:

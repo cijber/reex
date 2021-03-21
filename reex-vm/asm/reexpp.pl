@@ -5,7 +5,6 @@ use Fcntl qw(SEEK_SET SEEK_CUR SEEK_END);
 sub main {
     my $file = shift;
     open(my $reexasm, $file) or die("can't open $file");
-    my @asm;
     my %labels;
     my $line_index = 0;
     while (my $line = <$reexasm>) {
@@ -45,4 +44,4 @@ sub main {
 use File::Basename;
 my $dirname = dirname(__FILE__);
 
-main "$dirname/benbe.txt"
+main "$dirname/benbe.reexasm"
