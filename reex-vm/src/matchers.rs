@@ -6,15 +6,15 @@ pub trait Matcher<T: Debug>: Debug + Display {
 }
 
 #[derive(Debug)]
-pub struct Exact<T: Eq + Debug>(pub T);
+pub struct Exact<T: PartialEq + Debug>(pub T);
 
-impl<T: Eq + Debug> Display for Exact<T> {
+impl<T: PartialEq + Debug> Display for Exact<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", &self.0)
     }
 }
 
-impl<T: Eq + Debug> Matcher<T> for Exact<T> {
+impl<T: PartialEq + Debug> Matcher<T> for Exact<T> {
     fn matches(&self, item: &T) -> bool {
         &self.0 == item
     }

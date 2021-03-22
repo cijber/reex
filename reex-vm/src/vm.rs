@@ -1,8 +1,8 @@
 use crate::matchers::Matcher;
+use std::cmp::{max, min};
 use std::collections::BTreeSet;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
-use std::rc::Rc;
 use std::sync::Arc;
 
 #[macro_export]
@@ -159,9 +159,13 @@ impl<T: Debug> Display for Program<T> {
     }
 }
 
-impl<T: Eq + Debug> Program<T> {
-    pub fn spawn(&self) -> State<T> {
-        State::new(&self)
+impl<T: Debug> Program<T> {
+    pub fn spawn(&self) -> RuntimeBorrowed<T> {
+        RuntimeBorrowed::new(&self)
+    }
+
+    pub fn spawn_owned(self: &Arc<Self>) -> RuntimeOwned<T> {
+        RuntimeOwned::new(Arc::clone(self))
     }
 }
 
@@ -279,78 +283,110 @@ impl Thread {
     }
 }
 
-#[derive(Debug)]
-pub struct State<'a, T: Debug> {
+#[derive(Default, Debug, Clone)]
+pub struct State {
     threads: Vec<Thread>,
+    position: usize,
+}
+
+#[derive(Debug)]
+pub struct RuntimeBorrowed<'a, T: Debug> {
+    state: State,
     program: &'a Program<T>,
 }
 
-impl<T: Debug + PartialEq> IsState<T> for State<'_, T> {
-    fn program(&self) -> &Program<T> {
-        &self.program
-    }
-
-    fn threads(&mut self) -> &mut Vec<Thread> {
-        &mut self.threads
-    }
-}
-
-#[derive(Debug)]
-pub struct StateOwned<T: Debug> {
-    threads: Vec<Thread>,
+#[derive(Debug, Clone)]
+pub struct RuntimeOwned<T: Debug> {
+    state: State,
     program: Arc<Program<T>>,
 }
 
-impl<T: Debug + PartialEq> IsState<T> for StateOwned<T> {
+impl<T: Debug + PartialEq> Runtime<T> for RuntimeBorrowed<'_, T> {
+    fn state(&mut self) -> &mut State {
+        &mut self.state
+    }
+
+    fn program(&self) -> &Program<T> {
+        self.program
+    }
+
+    fn run(&mut self, data: &[T]) -> Option<(usize, usize)> {
+        self.state.run(&self.program, data)
+    }
+}
+
+impl<T: Debug + PartialEq> Runtime<T> for RuntimeOwned<T> {
+    fn state(&mut self) -> &mut State {
+        &mut self.state
+    }
+
     fn program(&self) -> &Program<T> {
         self.program.as_ref()
     }
 
-    fn threads(&mut self) -> &mut Vec<Thread> {
-        &mut self.threads
+    fn run(&mut self, data: &[T]) -> Option<(usize, usize)> {
+        self.state.run(&self.program.as_ref(), data)
     }
 }
 
-pub trait IsState<T: Debug + PartialEq> {
+pub trait Runtime<T: Debug + PartialEq> {
+    fn state(&mut self) -> &mut State;
     fn program(&self) -> &Program<T>;
-    fn threads(&mut self) -> &mut Vec<Thread>;
+    fn run(&mut self, data: &[T]) -> Option<(usize, usize)>;
+}
 
-    fn run(&mut self, data: &[T]) -> Vec<(usize, usize)> {
-        let mut results = vec![];
-        for i in 0..data.len() {
+impl State {
+    fn run<T: Debug + PartialEq>(
+        &mut self,
+        program: &Program<T>,
+        data: &[T],
+    ) -> Option<(usize, usize)> {
+        for i in self.position..=data.len() {
             let mut steps = 0;
-            self.threads().push(Thread::cont(i));
-            while let Some(items) = self.step(&data) {
-                if self.threads().len() > 100 || steps > 1000 {
+            // TODO: allow overlap
+            self.threads.clear();
+            self.threads.push(Thread::cont(i));
+            while let Some(items) = self.step(program, &data) {
+                if self.threads.len() > 100 || steps > 1000 {
                     panic!(
                         "{} threads, {} steps:\n{:#?}",
-                        self.threads().len(),
+                        self.threads.len(),
                         steps,
-                        self.threads()
+                        self.threads
                     );
                 }
 
                 if let Some(end) = items {
-                    results.push((i, end));
-                    return results;
+                    if i > end {
+                        self.position = i + 1;
+                    } else if self.position == end {
+                        self.position = end + 1;
+                    } else {
+                        self.position = end;
+                    }
+                    return Some((i, max(end, i)));
                 }
 
                 steps += 1usize;
             }
         }
 
-        results
+        None
     }
 
-    fn step(&mut self, data: &[T]) -> Option<Option<usize>> {
-        let mut thread = self.threads().pop()?;
-        if thread.address >= self.program().instructions.len() {
+    fn step<T: Debug + PartialEq>(
+        &mut self,
+        program: &Program<T>,
+        data: &[T],
+    ) -> Option<Option<usize>> {
+        let mut thread = self.threads.pop()?;
+        if thread.address >= program.instructions.len() {
             return Some(None);
         }
 
         let addr = thread.address;
         // let pos = thread.position;
-        let res = self.instruction(data, &mut thread);
+        let res = self.instruction(program, data, &mut thread);
         // println!(
         //     "{:3>0} {} {:?} {:?}",
         //     addr,
@@ -360,50 +396,50 @@ pub trait IsState<T: Debug + PartialEq> {
         // );
         match res {
             InstructionResult::Fork(new_thread) => {
-                self.threads().push(new_thread);
-                self.threads().push(thread);
+                self.threads.push(new_thread);
+                self.threads.push(thread);
             }
-            InstructionResult::Match => return Some(Some(thread.position)),
+            InstructionResult::Match => return Some(Some(max(thread.position, 1) - 1)),
             InstructionResult::Assertion => {
                 if !thread.inverted {
-                    if self.program().instructions[addr].should_advance() {
+                    if program.instructions[addr].should_advance() {
                         thread.advance_position();
 
                         for split in &thread.try_split {
                             let mut new_thread = thread.clone();
                             new_thread.address = new_thread.flags[*split];
                             new_thread.try_split.remove(split);
-                            self.threads().push(new_thread);
+                            self.threads.push(new_thread);
                         }
                     }
 
                     thread.address += 1;
-                    self.threads().push(thread);
+                    self.threads.push(thread);
                 }
             }
             InstructionResult::Continue => {
                 thread.address += 1;
-                self.threads().push(thread);
+                self.threads.push(thread);
             }
             InstructionResult::Jumped => {
-                self.threads().push(thread);
+                self.threads.push(thread);
             }
             InstructionResult::BoundaryBreak => {}
             InstructionResult::Break => {
                 if thread.inverted {
-                    if self.program().instructions[addr].should_advance() {
+                    if program.instructions[addr].should_advance() {
                         thread.advance_position();
 
                         for split in &thread.try_split {
                             let mut new_thread = thread.clone();
                             new_thread.address = new_thread.flags[*split];
                             new_thread.try_split.remove(split);
-                            self.threads().push(new_thread);
+                            self.threads.push(new_thread);
                         }
                     }
 
                     thread.address += 1;
-                    self.threads().push(thread)
+                    self.threads.push(thread)
                 }
             }
         }
@@ -411,9 +447,14 @@ pub trait IsState<T: Debug + PartialEq> {
         Some(None)
     }
 
-    fn instruction(&mut self, data: &[T], thread: &mut Thread) -> InstructionResult {
+    fn instruction<T: Debug + PartialEq>(
+        &mut self,
+        program: &Program<T>,
+        data: &[T],
+        thread: &mut Thread,
+    ) -> InstructionResult {
         use InstructionResult::*;
-        match &self.program().instructions[thread.address] {
+        match &program.instructions[thread.address] {
             Instruction::Item(item) => match thread.peek_position(&data) {
                 Some(pos) if &data[pos] == item => Assertion,
                 None => BoundaryBreak,
@@ -520,10 +561,19 @@ pub trait IsState<T: Debug + PartialEq> {
     }
 }
 
-impl<T: Eq + Debug> State<'_, T> {
-    fn new(program: &Program<T>) -> State<T> {
-        State {
-            threads: vec![],
+impl<T: Debug> RuntimeBorrowed<'_, T> {
+    fn new(program: &Program<T>) -> RuntimeBorrowed<T> {
+        RuntimeBorrowed {
+            state: State::default(),
+            program,
+        }
+    }
+}
+
+impl<T: Debug> RuntimeOwned<T> {
+    fn new(program: Arc<Program<T>>) -> RuntimeOwned<T> {
+        RuntimeOwned {
+            state: State::default(),
             program,
         }
     }

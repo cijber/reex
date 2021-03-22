@@ -1,5 +1,7 @@
 mod compiler;
-pub use compiler::Compiler;
+
+pub use compiler::custom;
+pub use compiler::{compile, compile_typed, Compiler};
 
 use pest::iterators::{Pair, Pairs};
 use pest::{error::Error, Parser};
@@ -22,6 +24,20 @@ pub struct ReexQuantifier {
     max: usize,
 }
 
+impl ReexQuantifier {
+    pub fn start(&self) -> usize {
+        self.start
+    }
+
+    pub fn end(&self) -> usize {
+        self.end
+    }
+
+    pub fn glue(&self) -> Option<&ReexNode> {
+        self.glue.as_ref().map(|x| x.as_ref())
+    }
+}
+
 #[derive(Debug)]
 pub struct ReexSet {
     items: Vec<ReexNode>,
@@ -30,6 +46,10 @@ pub struct ReexSet {
 impl ReexSet {
     pub fn empty() -> ReexSet {
         ReexSet { items: vec![] }
+    }
+
+    pub fn items(&self) -> &Vec<ReexNode> {
+        &self.items
     }
 }
 
@@ -42,6 +62,10 @@ impl ReexOptions {
     pub fn empty() -> ReexOptions {
         ReexOptions { options: vec![] }
     }
+
+    pub fn options(&self) -> &Vec<ReexNode> {
+        &self.options
+    }
 }
 
 #[derive(Debug)]
@@ -52,10 +76,34 @@ pub struct ReexNode {
     quantifier: Option<ReexQuantifier>,
 }
 
+impl ReexNode {
+    pub fn start(&self) -> usize {
+        self.start
+    }
+
+    pub fn end(&self) -> usize {
+        self.end
+    }
+
+    pub fn item(&self) -> &ReexItem {
+        &self.item
+    }
+
+    pub fn quantifier(&self) -> Option<&ReexQuantifier> {
+        self.quantifier.as_ref()
+    }
+}
+
 #[derive(Debug)]
 pub struct ReexFlag {
     name: String,
     arguments: Vec<String>,
+}
+
+impl ReexFlag {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 #[derive(Debug)]
@@ -63,6 +111,16 @@ pub struct ReexBlock {
     name: String,
     arguments: Vec<String>,
     item: Box<ReexNode>,
+}
+
+impl ReexBlock {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn item(&self) -> &ReexNode {
+        &self.item
+    }
 }
 
 #[derive(Debug)]
@@ -96,7 +154,7 @@ impl From<Error<Rule>> for ReexError {
 }
 
 impl ReexBuilder {
-    pub fn parse(input: String) -> Result<ReexNode, ReexError> {
+    pub fn parse(input: &String) -> Result<ReexNode, ReexError> {
         let mut rules: Pairs<Rule> = ReexParser::parse(Rule::reex, &input)?;
         let item = if let Some(item) = rules.next() {
             item

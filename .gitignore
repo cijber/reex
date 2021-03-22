@@ -1,2 +1,6 @@
 /target
 Cargo.lock
+/reex-web/node_modules
+/reex-web/pkg
+/reex-web/dist
+/reex-web/.cache

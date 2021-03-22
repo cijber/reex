@@ -1,0 +1,21 @@
+.reex-editor-container {
+    position: relative;
+}
+
+.reex-editor-highlight {
+    position: absolute;
+    color: transparent;
+    z-index: -1;
+}
+
+.reex-options {
+    background: rgba(205, 133, 63, 0.5);
+}
+
+.reex-set {
+    background: rgba(95, 158, 160, 0.5);
+}
+
+.reex-literal {
+    background: rgba(220, 20, 60, 0.5);
+}
