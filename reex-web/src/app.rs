@@ -1,11 +1,9 @@
 use crate::reex::ReexComponent;
 use reex::{Reex, ReexMatch};
 use wasm_bindgen::JsValue;
-use web_sys::HtmlInputElement;
 use yew::prelude::*;
 
 pub struct App {
-    regex_input: NodeRef,
     data_input: NodeRef,
     link: ComponentLink<Self>,
     regex: String,
@@ -15,7 +13,6 @@ pub struct App {
 pub enum Msg {
     RegexUpdated(String),
     InputUpdated(String),
-    Noop,
 }
 
 impl Component for App {
@@ -24,7 +21,6 @@ impl Component for App {
 
     fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
         App {
-            regex_input: Default::default(),
             data_input: Default::default(),
             link,
             regex: "hello \" \" :ahead[ world ]".to_string(),
@@ -46,7 +42,6 @@ impl Component for App {
                     return true;
                 }
             }
-            Msg::Noop => {}
         }
 
         false
@@ -57,9 +52,7 @@ impl Component for App {
     }
 
     fn view(&self) -> Html {
-        let regex_update = self
-            .link
-            .callback(|change: InputData| Msg::RegexUpdated(change.value));
+        let regex_update = self.link.callback(|regex: String| Msg::RegexUpdated(regex));
 
         let data_update = self
             .link
@@ -80,13 +73,10 @@ impl Component for App {
         html! {
             <>
                 <div>
-                    <input ref=self.regex_input.clone() oninput=regex_update value=self.regex.clone() />
+                    <ReexComponent onupdate=regex_update input=self.regex.clone() />
                 </div>
                 <div>
                     <input ref=self.data_input.clone() oninput=data_update value=self.data />
-                </div>
-                <div>
-                    <ReexComponent input=self.regex.clone() />
                 </div>
 
                 <div>

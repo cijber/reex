@@ -111,8 +111,11 @@ define_flags! {
         vec![vec![Instruction::ItemClass(Box::new(Whitespace))]]
     }
 
-    BoundaryFlag: "boundary" ["b"] for [u8, char] => |_,_| {
-        vec![vec![Instruction::Boundary(Box::new(Word))]]
+    BoundaryFlag: "boundary" ["b"] for [u8, char] => |_,c: &mut Compiler<_, _>| {
+        vec![vec![
+            Instruction::TestNotEqualsAndStorePosition(c.get_flag()),
+            Instruction::Boundary(Box::new(Word))
+        ]]
     }
 
     WordFlag: "word" ["w"] for [u8, char, String] => |_,_| {
@@ -123,21 +126,53 @@ define_flags! {
         vec![vec![Instruction::Any]]
     }
 
-    EndFlag: "end" => |_,_| {
-        vec![vec![Instruction::End]]
+    EndFlag: "end" => |_,c: &mut Compiler<_, _>|  {
+        vec![vec![
+            Instruction::TestNotEqualsAndStorePosition(c.get_flag()),
+            Instruction::End
+        ]]
     }
 
-    StartFlag: "start" => |_,_| {
-        vec![vec![Instruction::Start]]
+    StartFlag: "start" => |_,c: &mut Compiler<_, _>|  {
+        vec![vec![
+            Instruction::TestNotEqualsAndStorePosition(c.get_flag()),
+            Instruction::Start
+        ]]
     }
 }
 
 define_blocks! {
+    SelectBlock: "select" ["sel"] => |block: &ReexBlock, compiler: &mut Compiler<_, _>| {
+        let counter = compiler.get_counter("selection");
+        let mut data = vec![vec![Instruction::Marker("selection_start", counter)]];
+        let mut c = 0;
+        let mut inner_data = compiler.compile_blocks(block.item.as_ref());
+        for block in &mut inner_data {
+            for i in 0..block.len() {
+                if let Instruction::Marker("selection_start", _) = block[i] {
+                    let id = c;
+                    c += 1;
+                    block[i] = Instruction::StartSelection(id);
+                }
+
+                if let Instruction::Marker("selection_end", _) = block[i] {
+                    block[i] = Instruction::EndSelection;
+                }
+            }
+        }
+
+        relocate(inner_data, data.len(), &mut data);
+
+        data.push(vec![Instruction::Marker("selection_end", counter)]);
+
+        data
+    }
+
     LookbehindBlock: "lookbehind" ["behind", "lb"] => |block: &ReexBlock, compiler: &mut Compiler<_, _>| {
         let mut data = vec![];
         let flag = compiler.get_flag();
         let old_reverse = compiler.reverse;
-        let mut start = vec![Instruction::Checkpoint(flag)];
+        let mut start = vec![Instruction::TestNotEqualsAndStorePosition(compiler.get_flag()), Instruction::Checkpoint(flag)];
         if !old_reverse {
             start.push(Instruction::Reverse);
         }
@@ -161,7 +196,7 @@ define_blocks! {
         let mut data = vec![];
         let flag = compiler.get_flag();
         let old_reverse = compiler.reverse;
-        let mut start = vec![Instruction::Checkpoint(flag)];
+        let mut start = vec![Instruction::TestNotEqualsAndStorePosition(compiler.get_flag()), Instruction::Checkpoint(flag)];
         if old_reverse {
             start.push(Instruction::Forwards);
         }
@@ -238,18 +273,16 @@ define_blocks! {
     }
 }
 
-pub fn populate_compilers<T: Debug, F: Fn(&str) -> Vec<T>>(compiler: &mut Compiler<T, F>) {
+pub fn populate_compilers<T: Debug + PartialEq + 'static, F: Fn(&str) -> Vec<T>>(
+    compiler: &mut Compiler<T, F>,
+) {
+    compiler.add_block_compiler::<SelectBlock>();
     compiler.add_block_compiler::<LookaheadBlock>();
     compiler.add_block_compiler::<LookbehindBlock>();
     compiler.add_block_compiler::<PrefixBlock>();
     compiler.add_flag_compiler::<AnyFlag>();
     compiler.add_flag_compiler::<StartFlag>();
     compiler.add_flag_compiler::<EndFlag>();
-}
-
-pub fn populate_partial_eq_compilers<T: 'static + Debug + PartialEq, F: Fn(&str) -> Vec<T>>(
-    compiler: &mut Compiler<T, F>,
-) {
     compiler.add_block_compiler::<NotBlock>();
 }
 

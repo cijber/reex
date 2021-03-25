@@ -1,10 +1,9 @@
 use reex::Reex;
-use reex_ast::{Compiler, ReexError, ReexItem, ReexNode};
-use std::rc::Rc;
+use reex_ast::{ReexError, ReexItem, ReexNode};
 use wasm_bindgen::JsValue;
-use web_sys::{Document, Element, Window};
+use web_sys::Element;
 use yew::utils::{document, window};
-use yew::virtual_dom::{VNode, VTag, VText};
+use yew::virtual_dom::{VTag, VText};
 use yew::{html, Callback, Component, ComponentLink, Html, InputData, NodeRef, Properties};
 
 #[derive(Properties, Clone, PartialEq)]
@@ -120,11 +119,6 @@ impl Component for ReexComponent {
             .link
             .callback(move |e: InputData| ReexMessage::InputUpdate(e.value));
 
-        let doc: Document = window().document().expect("no document?");
-        //
-        // if let Ok(Some(selection)) = x.get_selection() {
-        // }
-
         fn render_node(node: &ReexNode, data: &str) -> Html {
             let mut tag = VTag::new("span");
             tag.add_attribute("data-start", &node.start());
@@ -178,15 +172,16 @@ impl Component for ReexComponent {
             .as_ref()
             .and_then(|x| x.as_ref().ok())
             .map(|x| render_node(x, &self.data))
-            .into_iter()
-            .collect::<Html>();
+            .unwrap_or_else(|| VText::new(self.data.clone()).into());
 
         html! {
             <div class="reex-editor-container">
                 <div class="reex-editor-highlight">
                     {highlight}
                 </div>
-                <div class="reex-editor-input" ref=self.editor_ref.clone() onfocus=self.link.callback(|_| ReexMessage::UpdateCaret) onkeyup=self.link.callback(|_| ReexMessage::UpdateCaret) onblur=self.link.callback(|_| ReexMessage::UpdateCaret) contenteditable=true oninput=event>{&self.data}</div>
+                <div class="reex-editor-input" ref=self.editor_ref.clone() onfocus=self.link.callback(|_| ReexMessage::UpdateCaret) onkeyup=self.link.callback(|_| ReexMessage::UpdateCaret) onblur=self.link.callback(|_| ReexMessage::UpdateCaret) contenteditable=true oninput=event>
+                    {&self.data}
+                </div>
             </div>
         }
     }
@@ -199,8 +194,8 @@ impl Component for ReexComponent {
                     // range.setStart(editor, offset);
                     // range.setEnd(editor, offset);
                     if let Some(text) = editor.first_child() {
-                        web_sys::console::log_2(&JsValue::from(offset), &JsValue::from(&text));
-                        selection.collapse_with_offset(Some(&text), offset);
+                        // web_sys::console::log_2(&JsValue::from(offset), &JsValue::from(&text));
+                        let _ = selection.collapse_with_offset(Some(&text), offset);
                     }
                 }
             }

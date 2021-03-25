@@ -4,6 +4,7 @@ use crate::custom::{BlockCompiler, FlagCompiler};
 use crate::{ReexBlock, ReexFlag, ReexItem, ReexNode};
 use reex_vm::vm::{Instruction, Program};
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 
 pub struct Compiler<T, F: Fn(&str) -> Vec<T>> {
     flag: usize,
@@ -11,17 +12,18 @@ pub struct Compiler<T, F: Fn(&str) -> Vec<T>> {
     transform: F,
     blocks: BTreeMap<&'static str, fn(&ReexBlock, &mut Self) -> Vec<Vec<Instruction<T>>>>,
     flags: BTreeMap<&'static str, fn(&ReexFlag, &mut Self) -> Vec<Vec<Instruction<T>>>>,
+    counters: BTreeMap<String, usize>,
 }
 
 pub fn compile(node: &ReexNode) -> Program<char> {
     compile_typed(node, |x| x.chars().collect::<Vec<_>>())
 }
 
-pub fn compile_typed<T, F: Fn(&str) -> Vec<T>>(node: &ReexNode, transform: F) -> Program<T> {
+pub fn compile_typed<T: Debug, F: Fn(&str) -> Vec<T>>(node: &ReexNode, transform: F) -> Program<T> {
     Compiler::compile_typed(node, transform)
 }
 
-impl<T, F: Fn(&str) -> Vec<T>> Compiler<T, F> {
+impl<T: Debug, F: Fn(&str) -> Vec<T>> Compiler<T, F> {
     pub fn add_block_compiler<B: BlockCompiler<T>>(&mut self) {
         self.blocks.insert(B::NAME, B::compile);
         for alias in B::ALIASES {
@@ -43,6 +45,7 @@ impl<T, F: Fn(&str) -> Vec<T>> Compiler<T, F> {
             transform,
             blocks: Default::default(),
             flags: Default::default(),
+            counters: Default::default(),
         }
     }
 
@@ -59,6 +62,22 @@ impl<T, F: Fn(&str) -> Vec<T>> Compiler<T, F> {
         for block in &blocks {
             start_index.push(offset);
             offset += block.len();
+        }
+
+        // fix selection markers
+        let mut c = 0;
+        for block in &mut blocks {
+            for i in 0..block.len() {
+                if let Instruction::Marker("selection_start", _) = block[i] {
+                    let id = c;
+                    c += 1;
+                    block[i] = Instruction::StartSelection(id);
+                }
+
+                if let Instruction::Marker("selection_end", _) = block[i] {
+                    block[i] = Instruction::EndSelection;
+                }
+            }
         }
 
         Program {
@@ -127,7 +146,7 @@ impl<T, F: Fn(&str) -> Vec<T>> Compiler<T, F> {
                 }
             }
             ReexItem::Block(block) => {
-                if let Some(block_compiler) = self.blocks.remove(block.name.as_str()) {
+                if let Some(block_compiler) = self.blocks.get(block.name.as_str()).copied() {
                     data = block_compiler(block, self);
                 }
             }
@@ -233,6 +252,14 @@ impl<T, F: Fn(&str) -> Vec<T>> Compiler<T, F> {
         let flag = self.flag;
         self.flag += 1;
         flag
+    }
+
+    fn get_counter<S: ToString>(&mut self, name: S) -> usize {
+        *self
+            .counters
+            .entry(name.to_string())
+            .and_modify(|x| *x = *x + 1)
+            .or_insert(0)
     }
 }
 

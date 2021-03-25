@@ -4,18 +4,22 @@
 
 .reex-editor-highlight {
     position: absolute;
-    color: transparent;
     z-index: -1;
 }
 
+.reex-editor-input {
+    color: transparent;
+    caret-color: black;
+}
+
 .reex-options {
-    background: rgba(205, 133, 63, 0.5);
+    background: rgba(205, 133, 63, 0.2);
 }
 
 .reex-set {
-    background: rgba(95, 158, 160, 0.5);
+    background: rgba(95, 158, 160, 0.2);
 }
 
 .reex-literal {
-    background: rgba(220, 20, 60, 0.5);
+    background: rgba(220, 20, 60, 0.2);
 }

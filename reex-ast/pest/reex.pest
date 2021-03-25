@@ -1,6 +1,6 @@
 reex = { group_body ~ EOI }
 
-ident = @{ (NUMBER | ALPHABETIC | OTHER_SYMBOL)+  }
+ident = @{ (NUMBER | ALPHABETIC | OTHER_SYMBOL ~ NONSPACING_MARK?)+  }
 
 element_list = { element* }
 element = { item ~ quantifier? ~ quantifier_glue? }
@@ -22,7 +22,7 @@ group_body = _{ (element_list ~ ("|" ~ element_list)*)? }
 ident_extra = { ident ~ ("<" ~ ( (ident_arg ~ ",")* ~ ident_arg )? ~ ">")? }
 ident_arg = @{ quoted_string | ident }
 
-block = ${ ":" ~ ident_extra ~ group }
+block = ${ ":" ~ ident_extra ~  group }
 flag = ${ ":" ~ ident_extra ~ !"[" }
 
 quoted_string = ${ PUSH(VALID_QUOTE) ~ inner_quoted_string ~ POP }

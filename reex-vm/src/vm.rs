@@ -1,6 +1,6 @@
 use crate::matchers::Matcher;
 use std::cmp::{max, min};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
@@ -75,10 +75,19 @@ macro_rules! program {
     ( > peekbehind $a:expr) => {
         $crate::vm::Instruction::PeekBehind(Box::new($a))
     };
+
+    ( > noop) => {
+        $crate::vm::Instruction::PeekBehind(Box::new($a))
+    };
+
+    ( > testnotequalsandstoreposition $a:expr) => {
+        $crate::vm::Instruction::PeekBehind(Box::new($a))
+    };
 }
 
 type Address = usize;
 type Flag = usize;
+type SelectionIdentifier = usize;
 
 #[derive(Debug)]
 pub enum Instruction<T> {
@@ -103,6 +112,10 @@ pub enum Instruction<T> {
     Forwards,
     Boundary(Box<dyn Matcher<T>>),
     Invert,
+    TestNotEqualsAndStorePosition(Flag),
+    StartSelection(SelectionIdentifier),
+    EndSelection,
+    Marker(&'static str, usize),
 }
 
 impl<T: Debug> Instruction<T> {
@@ -138,6 +151,18 @@ impl<T: Debug> Display for Instruction<T> {
             Instruction::TrySplit(fl, ad) => write!(f, "trysplit {}, {}", fl, ad),
             Instruction::StopSplit(fl) => write!(f, "stopsplit {}", fl),
             Instruction::Noop => write!(f, "noop"),
+            Instruction::TestNotEqualsAndStorePosition(fl) => {
+                write!(f, "testnotequalsandstoreposition {}", fl)
+            }
+            Instruction::StartSelection(id) => {
+                write!(f, "startselection {}", id)
+            }
+            Instruction::EndSelection => {
+                write!(f, "endselection")
+            }
+            Instruction::Marker(data, n) => {
+                write!(f, "marker {:?} {}", data, n)
+            }
         }
     }
 }
@@ -182,15 +207,161 @@ impl Default for ThreadDirection {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct Selected {
+    start: usize,
+    end: usize,
+    name: Option<String>,
+    full_path: Vec<usize>,
+    index_path: Vec<usize>,
+}
+
+impl Selected {
+    pub fn start(&self) -> usize {
+        self.start
+    }
+
+    pub fn end(&self) -> usize {
+        self.end
+    }
+
+    pub fn name(&self) -> Option<&String> {
+        self.name.as_ref()
+    }
+
+    pub fn full_path(&self) -> &[usize] {
+        &self.full_path
+    }
+
+    pub fn index_path(&self) -> &[usize] {
+        &self.index_path
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SelectionCollection {
+    selections: Vec<Selected>,
+    by_name: BTreeMap<String, Vec<usize>>,
+    by_index: BTreeMap<Vec<usize>, Vec<usize>>,
+    by_path: BTreeMap<Vec<usize>, usize>,
+}
+
+impl SelectionCollection {
+    fn add(&mut self, selection: Selected) {
+        let index = self.selections.len();
+
+        if let Some(name) = selection.name.clone() {
+            self.by_name.entry(name).or_default().push(index);
+        }
+        self.by_index
+            .entry(selection.index_path.clone())
+            .or_default()
+            .push(index);
+        self.by_path.insert(selection.full_path.clone(), index);
+        self.selections.push(selection);
+    }
+
+    fn update_end(&mut self, path: &[usize], position: usize) {
+        if let Some(item) = self
+            .by_path
+            .get(path)
+            .copied()
+            .and_then(|index| self.selections.get_mut(index))
+        {
+            item.end = max(item.end, position);
+            item.start = min(item.start, position);
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Selected> {
+        self.selections.iter()
+    }
+
+    pub fn children(&self, path: &[usize]) -> impl Iterator<Item = &Selected> {
+        let path = path.to_owned();
+        let mut clone_path = path.clone();
+        if clone_path.len() > 0 {
+            let id = clone_path.len() - 1;
+            clone_path[id] += 1;
+        }
+
+        let path_2 = path.clone();
+
+        self.by_path
+            .range(path..clone_path)
+            .filter_map(move |(child, index)| {
+                if (child.len() - 2) > path_2.len() {
+                    return None;
+                }
+
+                self.selections.get(*index)
+            })
+    }
+
+    pub fn descendants(&self, path: &[usize]) -> impl Iterator<Item = &Selected> {
+        let mut clone_path = path.to_vec();
+        if clone_path.len() > 0 {
+            let idx = clone_path.len() - 1;
+            clone_path[idx] += 1;
+        }
+
+        self.by_path
+            .range(path.to_vec()..clone_path)
+            .filter_map(move |(_, index)| self.selections.get(*index))
+    }
+
+    pub fn by_index(&self, index: &'_ [usize]) -> impl Iterator<Item = &Selected> + '_ {
+        self.by_index
+            .get(index)
+            .into_iter()
+            .flat_map(|x| x.iter())
+            .filter_map(move |x| self.selections.get(*x))
+    }
+
+    pub fn by_name<'a>(&'a self, name: &str) -> impl Iterator<Item = &Selected> + 'a {
+        self.by_name
+            .get(name)
+            .into_iter()
+            .flat_map(|x| x.iter())
+            .filter_map(move |x| self.selections.get(*x))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Thread {
     source_address: usize,
     address: usize,
     position: usize,
     flags: Vec<usize>,
+    flag_defined: Vec<bool>,
     try_split: BTreeSet<usize>,
     inverted: bool,
     direction: ThreadDirection,
+    selections: SelectionCollection,
+    full_path: Vec<usize>,
+    index_path: Vec<usize>,
+    index_counter: BTreeMap<Vec<usize>, usize>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Selection {
+    start: usize,
+    end: usize,
+    children: Vec<Vec<Selection>>,
+}
+
+impl Selection {
+    pub fn start(&self) -> usize {
+        self.start
+    }
+
+    pub fn end(&self) -> usize {
+        self.end
+    }
+
+    pub fn children(&self) -> &Vec<Vec<Selection>> {
+        &self.children
+    }
 }
 
 impl Default for Thread {
@@ -200,9 +371,14 @@ impl Default for Thread {
             address: 0,
             position: 0,
             flags: vec![],
+            flag_defined: vec![],
             try_split: Default::default(),
             inverted: false,
             direction: ThreadDirection::Forwards,
+            selections: Default::default(),
+            full_path: vec![],
+            index_path: vec![],
+            index_counter: Default::default(),
         }
     }
 }
@@ -220,21 +396,73 @@ impl Thread {
         if self.flags.len() <= i {
             self.flags.append(&mut vec![0; 1 + (i - self.flags.len())]);
         }
+
+        if self.flag_defined.len() <= i {
+            self.flag_defined
+                .append(&mut vec![false; 1 + (i - self.flag_defined.len())]);
+        }
+    }
+
+    fn corrected_position(&mut self) -> usize {
+        match self.direction {
+            ThreadDirection::Forwards => self.position,
+            ThreadDirection::Backwards => max(self.position, 1) - 1,
+        }
+    }
+
+    pub fn start_selection(&mut self, id: usize) {
+        self.index_path.push(id);
+        self.full_path.push(id);
+        let index = self
+            .index_counter
+            .get(&self.full_path)
+            .copied()
+            .unwrap_or(0);
+        self.index_counter.insert(self.full_path.clone(), index + 1);
+        self.full_path.push(index);
+        let selection = Selected {
+            start: self.corrected_position(),
+            end: self.corrected_position(),
+            name: None,
+            full_path: self.full_path.clone(),
+            index_path: self.index_path.clone(),
+        };
+        self.selections.add(selection);
+    }
+
+    pub fn end_selection(&mut self) {
+        let path = self.full_path.clone();
+        let pos = self.corrected_position();
+        self.selections.update_end(&path, pos);
+        self.index_path.pop();
+        self.full_path.pop();
+        self.full_path.pop();
     }
 
     pub fn set_flag(&mut self, i: usize, v: usize) {
         self.ensure_flag(i);
+        self.flag_defined[i] = true;
         self.flags[i] = v;
     }
 
     pub fn inc_flag(&mut self, i: usize) {
         self.ensure_flag(i);
+        self.flag_defined[i] = true;
         self.flags[i] += 1;
     }
 
     pub fn get_flag(&mut self, i: usize) -> usize {
         self.ensure_flag(i);
         self.flags[i]
+    }
+
+    pub fn get_defined_flag(&mut self, i: usize) -> Option<usize> {
+        self.ensure_flag(i);
+        if self.flag_defined[i] {
+            Some(self.flags[i])
+        } else {
+            None
+        }
     }
 
     pub fn peek_position_direction<T>(
@@ -310,7 +538,7 @@ impl<T: Debug + PartialEq> Runtime<T> for RuntimeBorrowed<'_, T> {
         self.program
     }
 
-    fn run(&mut self, data: &[T]) -> Option<(usize, usize)> {
+    fn run(&mut self, data: &[T]) -> Option<(usize, usize, SelectionCollection)> {
         self.state.run(&self.program, data)
     }
 }
@@ -324,7 +552,7 @@ impl<T: Debug + PartialEq> Runtime<T> for RuntimeOwned<T> {
         self.program.as_ref()
     }
 
-    fn run(&mut self, data: &[T]) -> Option<(usize, usize)> {
+    fn run(&mut self, data: &[T]) -> Option<(usize, usize, SelectionCollection)> {
         self.state.run(&self.program.as_ref(), data)
     }
 }
@@ -332,7 +560,7 @@ impl<T: Debug + PartialEq> Runtime<T> for RuntimeOwned<T> {
 pub trait Runtime<T: Debug + PartialEq> {
     fn state(&mut self) -> &mut State;
     fn program(&self) -> &Program<T>;
-    fn run(&mut self, data: &[T]) -> Option<(usize, usize)>;
+    fn run(&mut self, data: &[T]) -> Option<(usize, usize, SelectionCollection)>;
 }
 
 impl State {
@@ -340,7 +568,7 @@ impl State {
         &mut self,
         program: &Program<T>,
         data: &[T],
-    ) -> Option<(usize, usize)> {
+    ) -> Option<(usize, usize, SelectionCollection)> {
         for i in self.position..=data.len() {
             let mut steps = 0;
             // TODO: allow overlap
@@ -356,7 +584,7 @@ impl State {
                     );
                 }
 
-                if let Some(end) = items {
+                if let Some((end, selection)) = items {
                     if i > end {
                         self.position = i + 1;
                     } else if self.position == end {
@@ -364,7 +592,7 @@ impl State {
                     } else {
                         self.position = end;
                     }
-                    return Some((i, max(end, i)));
+                    return Some((i, max(end, i), selection));
                 }
 
                 steps += 1usize;
@@ -378,7 +606,7 @@ impl State {
         &mut self,
         program: &Program<T>,
         data: &[T],
-    ) -> Option<Option<usize>> {
+    ) -> Option<Option<(usize, SelectionCollection)>> {
         let mut thread = self.threads.pop()?;
         if thread.address >= program.instructions.len() {
             return Some(None);
@@ -399,7 +627,10 @@ impl State {
                 self.threads.push(new_thread);
                 self.threads.push(thread);
             }
-            InstructionResult::Match => return Some(Some(max(thread.position, 1) - 1)),
+            InstructionResult::Match => {
+                println!("Selected: {:?}", thread.selections);
+                return Some(Some((thread.position, thread.selections)));
+            }
             InstructionResult::Assertion => {
                 if !thread.inverted {
                     if program.instructions[addr].should_advance() {
@@ -424,7 +655,7 @@ impl State {
             InstructionResult::Jumped => {
                 self.threads.push(thread);
             }
-            InstructionResult::BoundaryBreak => {}
+            InstructionResult::HardBreak => {}
             InstructionResult::Break => {
                 if thread.inverted {
                     if program.instructions[addr].should_advance() {
@@ -457,7 +688,7 @@ impl State {
         match &program.instructions[thread.address] {
             Instruction::Item(item) => match thread.peek_position(&data) {
                 Some(pos) if &data[pos] == item => Assertion,
-                None => BoundaryBreak,
+                None => HardBreak,
                 _ => Break,
             },
             Instruction::Split(first, second) => {
@@ -516,7 +747,7 @@ impl State {
             }
             Instruction::ItemClass(c) => match thread.peek_position(&data) {
                 Some(pos) if c.matches(&data[pos]) => Assertion,
-                None => BoundaryBreak,
+                None => HardBreak,
                 _ => Break,
             },
             Instruction::Peek(c) => match thread.peek_position(&data) {
@@ -529,7 +760,7 @@ impl State {
             },
             Instruction::Any => match thread.peek_position(&data) {
                 Some(_) => Assertion,
-                _ => BoundaryBreak,
+                _ => HardBreak,
             },
             Instruction::Boundary(c) => {
                 match (
@@ -557,6 +788,25 @@ impl State {
                 Continue
             }
             Instruction::Noop => Continue,
+            Instruction::TestNotEqualsAndStorePosition(flag) => {
+                if let Some(val) = thread.get_defined_flag(*flag) {
+                    if val == self.position {
+                        return HardBreak;
+                    }
+                }
+
+                thread.set_flag(*flag, self.position);
+                Continue
+            }
+            Instruction::StartSelection(id) => {
+                thread.start_selection(*id);
+                Continue
+            }
+            Instruction::EndSelection => {
+                thread.end_selection();
+                Continue
+            }
+            Instruction::Marker(_, _) => Continue,
         }
     }
 }
@@ -587,5 +837,5 @@ pub enum InstructionResult {
     Jumped,
     Break,
     Assertion,
-    BoundaryBreak,
+    HardBreak,
 }
