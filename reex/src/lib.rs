@@ -115,6 +115,19 @@ pub struct ReexSelection<'a, T, O: ReexMatchInner<T>> {
     _unused: PhantomData<T>,
 }
 
+impl<T: Debug, O: ReexMatchInner<T>> Debug for ReexSelection<'_, T, O> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ReexSelection {{ {:?} ({}..{}) {:?} }}",
+            self.full_path,
+            self.start,
+            self.end,
+            self.data()
+        )
+    }
+}
+
 impl<'a, T, O: ReexMatchInner<T>> ReexSelection<'a, T, O> {
     pub fn data(&self) -> T {
         self.reex_match.data_slice(self.start, self.end)
@@ -402,9 +415,22 @@ mod tests {
     fn test_chain() {
         let mut reex = Reex::new("hello \" \"").unwrap();
 
-        while let Some(matched) = reex.find_str("hello hello hello") {
-            println!("{}", matched)
-        }
+        assert_eq!(
+            "hello ",
+            reex.find_str("hello hello hello")
+                .expect("Expected 2 matches")
+                .data()
+        );
+        assert_eq!(
+            "hello ",
+            reex.find_str("hello hello hello")
+                .expect("Expected 2 matches")
+                .data()
+        );
+        assert!(
+            reex.find_str("hello hello hello").is_none(),
+            "Expected only 3 matches"
+        );
     }
 
     #[cfg(feature = "parser")]
@@ -461,6 +487,10 @@ mod tests {
         let mut reex =
             Reex::new(":select[ :select[ a ]+ ] :select[ b+ ] :ahead[ :select[ c ] ]").unwrap();
 
-        println!("{}", reex.find_str("aaabbbbc").unwrap());
+        let matched = reex
+            .find_str("aaabbbbc")
+            .expect("Expected at least 1 match");
+        assert_eq!(Some("aaa"), matched.selection(0).map(|x| x.data()));
+        assert_eq!(3, matched.selection(0).unwrap().children().count());
     }
 }
