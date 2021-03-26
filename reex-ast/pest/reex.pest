@@ -1,6 +1,8 @@
 reex = { group_body ~ EOI }
 
-ident = @{ (NUMBER | ALPHABETIC | OTHER_SYMBOL ~ NONSPACING_MARK?)+  }
+RESERVED_SYMBOLS = @{ WHITESPACE | "[" | "]" | "!" | "*" | "?" | "+" | "%" | "%%" | "<" | ">" | "$" | "^" | "." | ".." | "{" | "}" | "\\" | "|" | "'" | "\"" }
+
+ident = @{ (!RESERVED_SYMBOLS ~ ANY)+ }
 
 element_list = { element* }
 element = { item ~ quantifier? ~ quantifier_glue? }

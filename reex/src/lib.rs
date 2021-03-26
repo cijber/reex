@@ -461,6 +461,19 @@ mod tests {
         let input = "hello❤️❤️❤️";
         let item = reex.find_str(input).expect("Should find 1 match");
         assert_eq!(input, item.data());
+
+        // now same thing but with,,, lesbians,, yes. these are 4 emoji's joined with ZWJ's
+        // but also are technically only 1 grapheme!
+        let mut reex = Reex::new("👩‍❤️‍💋‍👩+").unwrap();
+        let input = "👩‍❤️‍💋‍👩👩‍❤️‍💋‍👩👩‍❤️‍💋‍👩👩‍❤️‍💋‍👩";
+        let item = reex.find_str(input).expect("Should find at least 1 match");
+        assert_eq!(input, item.data());
+
+        // and here we have flags, the worst kind of grapheme!!
+        let mut reex = Reex::new("🇳🇱+").unwrap();
+        let input = "🇳🇱🇳🇱🇳🇱";
+        let item = reex.find_str(input).expect("Should find at least 1 match");
+        assert_eq!(input, item.data())
     }
 
     #[cfg(feature = "parser")]
