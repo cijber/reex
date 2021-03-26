@@ -1,4 +1,4 @@
-use reex::Reex;
+use reex::{Reex, ReexString};
 use reex_ast::{ReexError, ReexItem, ReexNode};
 use wasm_bindgen::JsValue;
 use web_sys::Element;
@@ -16,7 +16,7 @@ pub struct ReexProps {
 pub struct ReexComponent {
     data: String,
     node: Option<Result<ReexNode, ReexError>>,
-    compiled: Option<Reex<char>>,
+    compiled: Option<Reex<ReexString>>,
     link: ComponentLink<Self>,
     callback: Callback<String>,
     editor_ref: NodeRef,

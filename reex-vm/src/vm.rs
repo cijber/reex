@@ -290,7 +290,7 @@ impl SelectionCollection {
         self.by_path
             .range(path..clone_path)
             .filter_map(move |(child, index)| {
-                if (child.len() - 2) > path_2.len() {
+                if (child.len() - 2) != path_2.len() {
                     return None;
                 }
 
@@ -628,7 +628,6 @@ impl State {
                 self.threads.push(thread);
             }
             InstructionResult::Match => {
-                println!("Selected: {:?}", thread.selections);
                 return Some(Some((thread.position, thread.selections)));
             }
             InstructionResult::Assertion => {

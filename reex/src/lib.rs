@@ -4,10 +4,12 @@ use reex_ast::{Compiler, ReexNode};
 pub use reex_vm::matchers;
 pub use reex_vm::program;
 pub use reex_vm::vm::*;
+pub use reex_vm::ReexString;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
+use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Clone, Debug)]
 pub struct Reex<T: Debug + PartialEq> {
@@ -242,26 +244,20 @@ impl<'a, T> ReexMatch<&'a [T]> for ReexMatchBorrowed<'a, T> {
 }
 
 #[derive(Debug)]
-pub struct ReexMatchStr<'a> {
+pub struct ReexMatchString {
     start: usize,
     end: usize,
-    data: &'a str,
+    data: Vec<ReexString>,
     selection: SelectionCollection,
 }
 
-impl<'a> ReexMatchInner<&'a str> for ReexMatchStr<'a> {
-    fn data_slice(&self, from: usize, to: usize) -> &'a str {
+impl ReexMatchInner<ReexString> for ReexMatchString {
+    fn data_slice(&self, from: usize, to: usize) -> ReexString {
         if from == to {
-            return "";
+            return ReexString::empty();
         }
 
-        let mut data = self.data.char_indices().skip(from);
-        let (first, _) = data.next().unwrap();
-        let (end, _) = data
-            .skip((to - from) - 1)
-            .next()
-            .unwrap_or((self.data.len(), ' '));
-        &self.data[first..end]
+        self.data[from].expand(&self.data[to - 1])
     }
 
     fn selection_collection(&self) -> &SelectionCollection {
@@ -269,7 +265,7 @@ impl<'a> ReexMatchInner<&'a str> for ReexMatchStr<'a> {
     }
 }
 
-impl<'a, 'b> ReexMatch<&'a str> for ReexMatchStr<'a> {
+impl ReexMatch<ReexString> for ReexMatchString {
     fn start(&self) -> usize {
         self.start
     }
@@ -279,31 +275,15 @@ impl<'a, 'b> ReexMatch<&'a str> for ReexMatchStr<'a> {
     }
 }
 
-fn slice_str_char(input: &str, start: usize, end: usize) -> &str {
-    if start == end {
-        return "";
-    }
-
-    let mut data = input.char_indices().skip(start);
-    let (first, _) = data.next().unwrap();
-    let (end, _) = data
-        .skip((end - start) - 1)
-        .next()
-        .unwrap_or((input.len(), ' '));
-    &input[first..end]
-}
-
 impl<T: Debug> Display for ReexMatchBorrowed<'_, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "({}..{}) ｢{:?}｣", self.start(), self.end(), self.data())
     }
 }
 
-impl Display for ReexMatchStr<'_> {
+impl Display for ReexMatchString {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "({}..{}) ｢{}｣", self.start(), self.end(), self.data())?;
-
-        let data = self.data;
 
         for item in self.selection.iter() {
             writeln!(
@@ -313,7 +293,7 @@ impl Display for ReexMatchStr<'_> {
                 item.index_path().last().unwrap(),
                 item.start(),
                 item.end(),
-                slice_str_char(data, item.start(), item.end())
+                self.data_slice(item.start(), item.end()),
             )?;
         }
 
@@ -322,45 +302,45 @@ impl Display for ReexMatchStr<'_> {
 }
 
 #[cfg(feature = "parser")]
-impl Reex<char> {
-    pub fn new<T: ToString>(input: T) -> Result<Reex<char>, ReexError> {
+impl Reex<ReexString> {
+    pub fn new<T: ToString>(input: T) -> Result<Reex<ReexString>, ReexError> {
         Reex::new_configured(
             input,
-            |x| x.chars().collect(),
+            |x| x.graphemes(true).map(ReexString::from).collect::<Vec<_>>(),
             |x| {
                 reex_ast::custom::populate_compilers(x);
-                reex_ast::custom::populate_char_compilers(x);
+                reex_ast::custom::populate_reex_string_compilers(x);
             },
         )
     }
 
-    pub fn from_node(node: &ReexNode) -> Reex<char> {
+    pub fn from_node(node: &ReexNode) -> Reex<ReexString> {
         Self::from_node_configured(
             node,
-            |x| x.chars().collect(),
+            |x| x.graphemes(true).map(ReexString::from).collect::<Vec<_>>(),
             |x| {
                 reex_ast::custom::populate_compilers(x);
-                reex_ast::custom::populate_char_compilers(x);
+                reex_ast::custom::populate_reex_string_compilers(x);
             },
         )
     }
 }
 
-impl Reex<char> {
-    pub fn find_str<'a>(&mut self, data: &'a str) -> Option<ReexMatchStr<'a>> {
+impl Reex<ReexString> {
+    pub fn find_str<'a>(&mut self, data: &'a str) -> Option<ReexMatchString> {
         if self.runtime.is_none() {
             self.runtime = Some(self.program.spawn_owned());
         }
 
-        let chars = data.chars().collect::<Vec<_>>();
+        let data = ReexString::from(data).graphemes(true).collect::<Vec<_>>();
         self.runtime
             .as_mut()
             .unwrap()
-            .run(chars.as_ref())
-            .map(move |(start, end, selection)| ReexMatchStr {
+            .run(data.as_ref())
+            .map(move |(start, end, selection)| ReexMatchString {
                 start,
                 end,
-                data: &data,
+                data,
                 selection,
             })
     }
@@ -420,12 +400,14 @@ mod tests {
             reex.find_str("hello hello hello")
                 .expect("Expected 2 matches")
                 .data()
+                .as_ref()
         );
         assert_eq!(
             "hello ",
             reex.find_str("hello hello hello")
                 .expect("Expected 2 matches")
                 .data()
+                .as_ref()
         );
         assert!(
             reex.find_str("hello hello hello").is_none(),
@@ -469,6 +451,21 @@ mod tests {
 
     #[cfg(feature = "parser")]
     #[test]
+    fn test_grapheme_splitting() {
+        // what you see here as ♥ is actually ♥\u{fe0f}
+        // \u{fe0f} forces ♥ into emoji mode, making a red heart
+        // however, we don't want to repeat the \u{fe0f} we want to repeat the "whole" emoji
+        // this combination of characters is called a "grapheme"
+        // this test asserts it's actually allowing the grapheme to repeat
+        let mut reex = Reex::new("hello❤️+ :end").unwrap();
+        let input = "hello❤️❤️❤️";
+        let item = reex.find_str(input).expect("Should find 1 match");
+        assert_eq!(input, item.data());
+        println!("{:?}", input);
+    }
+
+    #[cfg(feature = "parser")]
+    #[test]
     fn test_heavy_black_heart_forced_into_emoji() {
         let mut reex = Reex::new("❤️").unwrap();
         reex.find_str("❤️").expect("Should find itself");
@@ -477,8 +474,8 @@ mod tests {
     #[cfg(feature = "parser")]
     #[test]
     fn test_repeating_lookahead() {
-        let mut reex = Reex::new(":ahead[ ❤ ]+").unwrap();
-        assert_eq!("", reex.find_str("❤️").expect("Should succeed").data());
+        let mut reex = Reex::new(":ahead[ ❤️ ]+").unwrap();
+        assert_eq!("", reex.find_str("❤️❤️❤️").expect("Should succeed").data());
     }
 
     #[cfg(feature = "parser")]
@@ -490,7 +487,21 @@ mod tests {
         let matched = reex
             .find_str("aaabbbbc")
             .expect("Expected at least 1 match");
-        assert_eq!(Some("aaa"), matched.selection(0).map(|x| x.data()));
+        assert_eq!(
+            Some("aaa".to_string()),
+            matched.selection(0).map(|x| x.data().to_string())
+        );
         assert_eq!(3, matched.selection(0).unwrap().children().count());
+
+        let mut reex = Reex::new(":select[ hello :select[ wo :select[ rl d+ ]+ ]+ ]").unwrap();
+
+        let matched = reex
+            .find_str("helloworldrldrldddrlddddddworldrldrlddddddd")
+            .expect("Expected at least 1 match");
+        assert_eq!(
+            Some("rlddddddd".to_string()),
+            matched.selection((0, 0, 0)).map(|x| x.data().to_string())
+        );
+        assert_eq!(7, matched.selections((0, 0, 0)).count());
     }
 }

@@ -9,6 +9,8 @@ edition = "2018"
 [dependencies]
 reex-ast = { version = "0.1.0", path = "../reex-ast", optional = true }
 reex-vm = { version = "0.1.0", path = "../reex-vm" }
+tinyvec_string = { version = "0.2.0", features = ["alloc"] }
+unicode-segmentation = "1.7.1"
 
 [features]
 default = ["parser"]

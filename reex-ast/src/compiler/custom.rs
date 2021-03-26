@@ -1,6 +1,7 @@
 use crate::{compiler::relocate, Compiler, ReexBlock, ReexFlag};
 use reex_vm::matchers::{Exact, Not, Whitespace, Word};
 use reex_vm::vm::Instruction;
+use reex_vm::ReexString;
 use std::fmt::Debug;
 
 pub trait BlockCompiler<T> {
@@ -107,18 +108,18 @@ macro_rules! define_blocks {
 }
 
 define_flags! {
-    WhitespaceFlag: "whitespace" ["s", "ws"] for [u8, char, String] => |_,_| {
+    WhitespaceFlag: "whitespace" ["s", "ws"] for [u8, char, String, ReexString] => |_,_| {
         vec![vec![Instruction::ItemClass(Box::new(Whitespace))]]
     }
 
-    BoundaryFlag: "boundary" ["b"] for [u8, char] => |_,c: &mut Compiler<_, _>| {
+    BoundaryFlag: "boundary" ["b"] for [u8, char, ReexString] => |_,c: &mut Compiler<_, _>| {
         vec![vec![
             Instruction::TestNotEqualsAndStorePosition(c.get_flag()),
             Instruction::Boundary(Box::new(Word))
         ]]
     }
 
-    WordFlag: "word" ["w"] for [u8, char, String] => |_,_| {
+    WordFlag: "word" ["w"] for [u8, char, String, ReexString] => |_,_| {
         vec![vec![Instruction::ItemClass(Box::new(Word))]]
     }
 
@@ -292,6 +293,14 @@ pub fn populate_string_compilers<F: Fn(&str) -> Vec<String>>(compiler: &mut Comp
 }
 
 pub fn populate_u8_compilers<F: Fn(&str) -> Vec<u8>>(compiler: &mut Compiler<u8, F>) {
+    compiler.add_flag_compiler::<WordFlag>();
+    compiler.add_flag_compiler::<BoundaryFlag>();
+    compiler.add_flag_compiler::<WhitespaceFlag>();
+}
+
+pub fn populate_reex_string_compilers<'r, F: Fn(&str) -> Vec<ReexString>>(
+    compiler: &mut Compiler<ReexString, F>,
+) {
     compiler.add_flag_compiler::<WordFlag>();
     compiler.add_flag_compiler::<BoundaryFlag>();
     compiler.add_flag_compiler::<WhitespaceFlag>();

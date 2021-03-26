@@ -129,7 +129,22 @@ pub enum ReexItem {
     Options(ReexOptions),
     Flag(ReexFlag),
     Block(ReexBlock),
-    Literal(String),
+    Literal(ReexLiteral),
+}
+
+#[derive(Debug)]
+pub struct ReexLiteral {
+    value: String,
+    quoted: bool,
+}
+
+impl ReexLiteral {
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+    pub fn quoted(&self) -> bool {
+        self.quoted
+    }
 }
 
 pub struct ReexBuilder;
@@ -183,8 +198,14 @@ impl ReexBuilder {
             Rule::item => {
                 return Self::build_item(input.into_inner().next().unwrap());
             }
-            Rule::quoted_string => ReexItem::Literal(Self::build_string(input)),
-            Rule::ident => ReexItem::Literal(Self::build_string(input)),
+            Rule::quoted_string => ReexItem::Literal(ReexLiteral {
+                value: Self::build_string(input),
+                quoted: true,
+            }),
+            Rule::ident => ReexItem::Literal(ReexLiteral {
+                value: Self::build_string(input),
+                quoted: false,
+            }),
             Rule::symbol => match input.as_str() {
                 "." => ReexItem::Flag(ReexFlag {
                     name: "any".to_string(),

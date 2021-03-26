@@ -99,6 +99,7 @@ impl<T: Debug, F: Fn(&str) -> Vec<T>> Compiler<T, F> {
     }
 
     pub fn compile_blocks(&mut self, node: &ReexNode) -> Vec<Vec<Instruction<T>>> {
+        let mut prefix = vec![];
         let mut data = vec![];
         match &node.item {
             ReexItem::Set(item) => {
@@ -151,18 +152,26 @@ impl<T: Debug, F: Fn(&str) -> Vec<T>> Compiler<T, F> {
                 }
             }
             ReexItem::Literal(item) => {
-                let iter = (self.transform)(item);
+                let iter = (self.transform)(item.value());
                 let mut items: Vec<_> = iter.into_iter().map(|x| Instruction::Item(x)).collect();
 
                 if self.reverse {
                     items.reverse();
                 }
 
-                data.push(items);
+                if item.quoted {
+                    data.push(items);
+                } else {
+                    if let Some(x) = items.pop() {
+                        data.push(vec![x]);
+                    }
+
+                    prefix.push(items);
+                }
             }
         }
 
-        if let Some(quantifier) = &node.quantifier {
+        let data = if let Some(quantifier) = &node.quantifier {
             let mut looped_data = vec![];
             let mut data_start = 0;
             if let Some(glue) = quantifier.glue.as_ref() {
@@ -242,10 +251,17 @@ impl<T: Debug, F: Fn(&str) -> Vec<T>> Compiler<T, F> {
                 )]);
             }
 
-            return looped_data;
-        }
+            looped_data
+        } else {
+            data
+        };
 
-        data
+        if prefix.len() > 0 {
+            relocate(data, prefix.len(), &mut prefix);
+            prefix
+        } else {
+            data
+        }
     }
 
     fn get_flag(&mut self) -> usize {

@@ -1,3 +1,4 @@
+use crate::ReexString;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 
@@ -76,6 +77,12 @@ impl Matcher<u8> for Whitespace {
     }
 }
 
+impl Matcher<ReexString> for Whitespace {
+    fn matches(&self, item: &ReexString) -> bool {
+        item.as_ref().chars().next().unwrap().is_whitespace()
+    }
+}
+
 #[derive(Debug)]
 pub struct Word;
 
@@ -100,6 +107,12 @@ impl Matcher<char> for Word {
 impl Matcher<u8> for Word {
     fn matches(&self, item: &u8) -> bool {
         item.is_ascii_alphanumeric()
+    }
+}
+
+impl Matcher<ReexString> for Word {
+    fn matches(&self, item: &ReexString) -> bool {
+        item.as_ref().chars().next().unwrap().is_alphanumeric()
     }
 }
 
