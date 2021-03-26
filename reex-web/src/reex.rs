@@ -30,7 +30,7 @@ impl ReexComponent {
             return false;
         }
 
-        if input == "" {
+        if input.is_empty() {
             self.data = input;
             self.node = None;
             self.compiled = None;

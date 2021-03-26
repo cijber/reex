@@ -52,7 +52,7 @@ impl Component for App {
     }
 
     fn view(&self) -> Html {
-        let regex_update = self.link.callback(|regex: String| Msg::RegexUpdated(regex));
+        let regex_update = self.link.callback(Msg::RegexUpdated);
 
         let data_update = self
             .link

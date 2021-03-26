@@ -169,7 +169,7 @@ impl From<Error<Rule>> for ReexError {
 }
 
 impl ReexBuilder {
-    pub fn parse(input: &String) -> Result<ReexNode, ReexError> {
+    pub fn parse(input: &str) -> Result<ReexNode, ReexError> {
         let mut rules: Pairs<Rule> = ReexParser::parse(Rule::reex, &input)?;
         let item = if let Some(item) = rules.next() {
             item
@@ -391,13 +391,13 @@ impl ReexBuilder {
 
         let start = quantifier
             .as_ref()
-            .or(glue_pair.as_ref())
+            .or_else(|| glue_pair.as_ref())
             .unwrap()
             .as_span()
             .start();
         let end = glue_pair
             .as_ref()
-            .or(quantifier.as_ref())
+            .or_else(|| quantifier.as_ref())
             .unwrap()
             .as_span()
             .end();
@@ -414,10 +414,10 @@ impl ReexBuilder {
                     let mut items = range.into_inner().next().unwrap().into_inner();
                     let min_str = items.next().unwrap().as_str();
                     let max_str = items.next().unwrap().as_str();
-                    if min_str != "" {
+                    if !min_str.is_empty() {
                         min = usize::from_str(min_str).unwrap()
                     }
-                    if max_str != "" {
+                    if !max_str.is_empty() {
                         max = usize::from_str(max_str).unwrap()
                     }
                 }

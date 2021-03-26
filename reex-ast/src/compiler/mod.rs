@@ -6,12 +6,15 @@ use reex_vm::vm::{Instruction, Program};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 
+type ReexBlockCompiler<T, S> = fn(&ReexBlock, &mut S) -> Vec<Vec<Instruction<T>>>;
+type ReexFlagCompiler<T, S> = fn(&ReexFlag, &mut S) -> Vec<Vec<Instruction<T>>>;
+
 pub struct Compiler<T, F: Fn(&str) -> Vec<T>> {
     flag: usize,
     reverse: bool,
     transform: F,
-    blocks: BTreeMap<&'static str, fn(&ReexBlock, &mut Self) -> Vec<Vec<Instruction<T>>>>,
-    flags: BTreeMap<&'static str, fn(&ReexFlag, &mut Self) -> Vec<Vec<Instruction<T>>>>,
+    blocks: BTreeMap<&'static str, ReexBlockCompiler<T, Self>>,
+    flags: BTreeMap<&'static str, ReexFlagCompiler<T, Self>>,
     counters: BTreeMap<String, usize>,
 }
 
@@ -67,15 +70,15 @@ impl<T: Debug, F: Fn(&str) -> Vec<T>> Compiler<T, F> {
         // fix selection markers
         let mut c = 0;
         for block in &mut blocks {
-            for i in 0..block.len() {
-                if let Instruction::Marker("selection_start", _) = block[i] {
+            for instruction in block {
+                if let Instruction::Marker("selection_start", _) = instruction {
                     let id = c;
                     c += 1;
-                    block[i] = Instruction::StartSelection(id);
+                    *instruction = Instruction::StartSelection(id);
                 }
 
-                if let Instruction::Marker("selection_end", _) = block[i] {
-                    block[i] = Instruction::EndSelection;
+                if let Instruction::Marker("selection_end", _) = instruction {
+                    *instruction = Instruction::EndSelection;
                 }
             }
         }
@@ -153,7 +156,7 @@ impl<T: Debug, F: Fn(&str) -> Vec<T>> Compiler<T, F> {
             }
             ReexItem::Literal(item) => {
                 let iter = (self.transform)(item.value());
-                let mut items: Vec<_> = iter.into_iter().map(|x| Instruction::Item(x)).collect();
+                let mut items: Vec<_> = iter.into_iter().map(Instruction::Item).collect();
 
                 if self.reverse {
                     items.reverse();
@@ -256,7 +259,7 @@ impl<T: Debug, F: Fn(&str) -> Vec<T>> Compiler<T, F> {
             data
         };
 
-        if prefix.len() > 0 {
+        if !prefix.is_empty() {
             relocate(data, prefix.len(), &mut prefix);
             prefix
         } else {
@@ -274,7 +277,7 @@ impl<T: Debug, F: Fn(&str) -> Vec<T>> Compiler<T, F> {
         *self
             .counters
             .entry(name.to_string())
-            .and_modify(|x| *x = *x + 1)
+            .and_modify(|x| *x += 1)
             .or_insert(0)
     }
 }

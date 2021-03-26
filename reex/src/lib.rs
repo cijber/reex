@@ -327,7 +327,7 @@ impl Reex<ReexString> {
 }
 
 impl Reex<ReexString> {
-    pub fn find_str<'a>(&mut self, data: &'a str) -> Option<ReexMatchString> {
+    pub fn find_str(&mut self, data: &str) -> Option<ReexMatchString> {
         if self.runtime.is_none() {
             self.runtime = Some(self.program.spawn_owned());
         }
@@ -461,7 +461,6 @@ mod tests {
         let input = "hello❤️❤️❤️";
         let item = reex.find_str(input).expect("Should find 1 match");
         assert_eq!(input, item.data());
-        println!("{:?}", input);
     }
 
     #[cfg(feature = "parser")]

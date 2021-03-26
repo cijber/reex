@@ -149,15 +149,15 @@ define_blocks! {
         let mut c = 0;
         let mut inner_data = compiler.compile_blocks(block.item.as_ref());
         for block in &mut inner_data {
-            for i in 0..block.len() {
-                if let Instruction::Marker("selection_start", _) = block[i] {
+            for instrution in block {
+                if let Instruction::Marker("selection_start", _) = instrution {
                     let id = c;
                     c += 1;
-                    block[i] = Instruction::StartSelection(id);
+                    *instrution = Instruction::StartSelection(id);
                 }
 
-                if let Instruction::Marker("selection_end", _) = block[i] {
-                    block[i] = Instruction::EndSelection;
+                if let Instruction::Marker("selection_end", _) = instrution {
+                    *instrution = Instruction::EndSelection;
                 }
             }
         }
@@ -298,7 +298,7 @@ pub fn populate_u8_compilers<F: Fn(&str) -> Vec<u8>>(compiler: &mut Compiler<u8,
     compiler.add_flag_compiler::<WhitespaceFlag>();
 }
 
-pub fn populate_reex_string_compilers<'r, F: Fn(&str) -> Vec<ReexString>>(
+pub fn populate_reex_string_compilers<F: Fn(&str) -> Vec<ReexString>>(
     compiler: &mut Compiler<ReexString, F>,
 ) {
     compiler.add_flag_compiler::<WordFlag>();

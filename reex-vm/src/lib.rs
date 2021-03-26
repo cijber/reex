@@ -78,7 +78,7 @@ impl ReexStringGraphemes {
     }
 }
 
-static EMPTY_STR: &'static str = "";
+static EMPTY_STR: &str = "";
 
 impl ReexString {
     pub fn expand(&self, other: &ReexString) -> ReexString {
@@ -107,6 +107,10 @@ impl ReexString {
 
     pub fn len(&self) -> usize {
         self.end - self.start
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.start != self.end
     }
 
     pub fn slice(&self, start: usize, end: usize) -> ReexString {

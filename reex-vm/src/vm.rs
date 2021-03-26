@@ -120,10 +120,10 @@ pub enum Instruction<T> {
 
 impl<T: Debug> Instruction<T> {
     pub fn should_advance(&self) -> bool {
-        match self {
-            Instruction::Any | Instruction::Item(_) | Instruction::ItemClass(_) => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Instruction::Any | Instruction::Item(_) | Instruction::ItemClass(_)
+        )
     }
 }
 
@@ -175,10 +175,8 @@ pub struct Program<T> {
 impl<T: Debug> Display for Program<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "Program {{")?;
-        let mut ind = 0;
-        for i in &self.instructions {
+        for (ind, i) in self.instructions.iter().enumerate() {
             writeln!(f, "{:0>3}   {}", ind, i)?;
-            ind += 1;
         }
         writeln!(f, "}}")
     }
@@ -280,7 +278,7 @@ impl SelectionCollection {
     pub fn children(&self, path: &[usize]) -> impl Iterator<Item = &Selected> {
         let path = path.to_owned();
         let mut clone_path = path.clone();
-        if clone_path.len() > 0 {
+        if !clone_path.is_empty() {
             let id = clone_path.len() - 1;
             clone_path[id] += 1;
         }
@@ -300,7 +298,7 @@ impl SelectionCollection {
 
     pub fn descendants(&self, path: &[usize]) -> impl Iterator<Item = &Selected> {
         let mut clone_path = path.to_vec();
-        if clone_path.len() > 0 {
+        if clone_path.is_empty() {
             let idx = clone_path.len() - 1;
             clone_path[idx] += 1;
         }
@@ -479,7 +477,7 @@ impl Thread {
                 }
             }
             ThreadDirection::Backwards => {
-                if 0 >= self.position {
+                if 0 == self.position {
                     None
                 } else {
                     Some(self.position - 1)
