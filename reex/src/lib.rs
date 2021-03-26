@@ -452,7 +452,7 @@ mod tests {
     #[cfg(feature = "parser")]
     #[test]
     fn test_grapheme_splitting() {
-        // what you see here as ♥ is actually ♥\u{fe0f}
+        // what you see here as ❤️ is actually ♥\u{fe0f}
         // \u{fe0f} forces ♥ into emoji mode, making a red heart
         // however, we don't want to repeat the \u{fe0f} we want to repeat the "whole" emoji
         // this combination of characters is called a "grapheme"
