@@ -149,15 +149,15 @@ define_blocks! {
         let mut c = 0;
         let mut inner_data = compiler.compile_blocks(block.item.as_ref());
         for block in &mut inner_data {
-            for instrution in block {
-                if let Instruction::Marker("selection_start", _) = instrution {
+            for instruction in block {
+                if let Instruction::Marker("selection_start", _) = instruction {
                     let id = c;
                     c += 1;
-                    *instrution = Instruction::StartSelection(id);
+                    *instruction = Instruction::StartSelection(id);
                 }
 
-                if let Instruction::Marker("selection_end", _) = instrution {
-                    *instrution = Instruction::EndSelection;
+                if let Instruction::Marker("selection_end", _) = instruction {
+                    *instruction = Instruction::EndSelection;
                 }
             }
         }
